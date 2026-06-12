@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- Review SDK admin chrome now defaults hidden on page load; Cmd+Shift+Z is the explicit reveal/hide control.
 - Cmd+Shift+Z now acts as a visibility toggle for SDK chrome instead of starting review capture; hiding the chrome also closes the HUD so every SDK-owned UI surface disappears together.
 - Review HUD microphone startup now fails closed instead of submitting blank fallback audio — prevents silent SDK capture failures from producing unusable Hub review packets.
 

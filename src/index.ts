@@ -2143,7 +2143,7 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
   const action = root.querySelector('.za-action') as HTMLButtonElement
   let session = options.manager.getSession()
   let open = false
-  let visible = true
+  let visible = false
 
   function applyVisibility() {
     host.style.display = visible ? '' : 'none'

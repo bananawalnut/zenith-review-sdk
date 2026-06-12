@@ -28,6 +28,7 @@ test('review HUD exposes explicit Start review action and does not auto-start ca
 test('SDK admin overlay can be hidden by global shortcut without destroying auth state', () => {
   assert.match(source, /toggleVisibility\(\): boolean/)
   assert.match(source, /isVisible\(\): boolean/)
+  assert.match(source, /let visible = false/)
   assert.match(source, /host\.style\.display = visible \? '' : 'none'/)
   assert.match(source, /if \(!visible\) open = false/)
 })

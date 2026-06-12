@@ -1545,7 +1545,7 @@ export function renderZenithAdminOverlay(options) {
     const action = root.querySelector('.za-action');
     let session = options.manager.getSession();
     let open = false;
-    let visible = true;
+    let visible = false;
     function applyVisibility() {
         host.style.display = visible ? '' : 'none';
         if (!visible)
