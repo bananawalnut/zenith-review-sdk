@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Cmd+Shift+Z now acts as a visibility toggle for SDK chrome instead of starting review capture; hiding the chrome also closes the HUD so every SDK-owned UI surface disappears together.
+- Review HUD microphone startup now fails closed instead of submitting blank fallback audio — prevents silent SDK capture failures from producing unusable Hub review packets.
+
 ### Added
 - SDK-owned global review HUD (`createReviewHud`) — mounts into `document.body` with Shadow DOM, defaults to the production Hub at `https://hub.zenith-research.ca`, restores short-lived Hub auth sessions, starts/stops the global recorder, and submits to Hub without requiring consumer apps to route into or embed controls inside reviewed pages.
 - SDK package scaffold files (`package.json`, lockfile, TypeScript configs) — makes the accepted Review SDK API buildable from a fresh checkout instead of relying on untracked local files.
@@ -20,3 +24,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `sessionContext` field on `ReviewRecordingResult` — captures URL, title, scroll position, and viewport size at record start.
 - Navigation capture via patched `history.pushState`/`replaceState`, `popstate`, `hashchange`, and `MutationObserver` on `document.title` — each change logs a `navigation` event with the new URL and title. Enables SPA session replay reproducibility (e.g. swirl-ui tab switches).
 - New event types: `session-start`, `navigation`.
+- `initZenithAdminShortcut` — adds a process-wide Cmd/Ctrl+Shift+Z hook that can be initialized from any app shell and writes a global `window.__zenithAdminShortcut` handle so review-admin entry stays available even on capture-focused/full-screen routes.

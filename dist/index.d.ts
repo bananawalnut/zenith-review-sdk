@@ -1,4 +1,4 @@
-export type ReviewCaptureEventType = 'recording-started' | 'recording-stopped' | 'capture-mode-changed' | 'pointer-move' | 'pointer-down' | 'pointer-up' | 'click' | 'key-down' | 'selection-change' | 'drawing-enabled' | 'drawing-disabled' | 'drawing-input-enabled' | 'drawing-input-disabled' | 'stroke-started' | 'stroke-point' | 'stroke-ended' | 'audio-chunk' | 'audio-error' | 'recorder-warning' | 'time-limit-reached' | 'session-start' | 'navigation' | 'visibility-change';
+export type ReviewCaptureEventType = 'recording-started' | 'recording-stopped' | 'capture-mode-changed' | 'pointer-move' | 'pointer-down' | 'pointer-up' | 'click' | 'key-down' | 'selection-change' | 'drawing-enabled' | 'drawing-disabled' | 'drawing-input-enabled' | 'drawing-input-disabled' | 'stroke-started' | 'stroke-point' | 'stroke-ended' | 'audio-chunk' | 'audio-error' | 'recorder-warning' | 'time-limit-reached' | 'session-start' | 'navigation' | 'scroll' | 'visibility-change';
 export interface ReviewCaptureEventBase {
     id: number;
     type: ReviewCaptureEventType;
@@ -129,11 +129,42 @@ export interface ReviewNavigationCaptureEvent extends ReviewCaptureEventBase {
     scrollX: number;
     scrollY: number;
 }
+export interface ReviewScrollCaptureEvent extends ReviewCaptureEventBase {
+    type: 'scroll';
+    url: string;
+    title: string;
+    scrollX: number;
+    scrollY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+}
 export interface ReviewVisibilityChangeEvent extends ReviewCaptureEventBase {
     type: 'visibility-change';
     state: 'visible' | 'hidden';
 }
-export type ReviewCaptureEvent = ReviewRecordingStateEvent | ReviewCaptureModeEvent | ReviewDrawingStateEvent | ReviewDrawingInputStateEvent | ReviewPointerCaptureEvent | ReviewKeyCaptureEvent | ReviewSelectionCaptureEvent | ReviewStrokeCaptureEvent | ReviewAudioCaptureEvent | ReviewAudioErrorEvent | ReviewRecorderWarningEvent | ReviewTimeLimitReachedEvent | ReviewSessionStartEvent | ReviewNavigationCaptureEvent | ReviewVisibilityChangeEvent;
+export interface ZenithAdminShortcutOptions {
+    open: () => void;
+    eventName?: string;
+    enabled?: boolean;
+}
+export interface ZenithAdminShortcutHandle {
+    dispose: () => void;
+}
+interface ZenithAdminShortcutState {
+    bound: boolean;
+    refCount: number;
+    open: (() => void) | null;
+    eventName: string;
+    ready: boolean;
+    handler?: (event: KeyboardEvent) => void;
+}
+declare global {
+    interface Window {
+        __zenithAdminShortcut?: ZenithAdminShortcutState;
+    }
+}
+export declare function initZenithAdminShortcut(options: ZenithAdminShortcutOptions): ZenithAdminShortcutHandle;
+export type ReviewCaptureEvent = ReviewRecordingStateEvent | ReviewCaptureModeEvent | ReviewDrawingStateEvent | ReviewDrawingInputStateEvent | ReviewPointerCaptureEvent | ReviewKeyCaptureEvent | ReviewSelectionCaptureEvent | ReviewStrokeCaptureEvent | ReviewAudioCaptureEvent | ReviewAudioErrorEvent | ReviewRecorderWarningEvent | ReviewTimeLimitReachedEvent | ReviewSessionStartEvent | ReviewNavigationCaptureEvent | ReviewScrollCaptureEvent | ReviewVisibilityChangeEvent;
 export interface ReviewCaptureSnapshot {
     recording: boolean;
     captureMode: ReviewCaptureMode;
@@ -231,6 +262,7 @@ export interface ReviewAuthOverlayOptions extends Omit<ReviewAuthSessionRequest,
     cancelLabel?: string;
     brandLabel?: string;
     zIndex?: number;
+    createSession?: (request: ReviewAuthSessionRequest) => Promise<ReviewAuthSession>;
 }
 export interface AuthenticateReviewSessionOptions extends ReviewAuthOverlayOptions {
     storage?: ReviewAuthSessionStorage;
@@ -271,6 +303,10 @@ export interface ZenithAdminOverlayOptions {
 export interface ZenithAdminOverlayHandle {
     destroy(): void;
     update(session?: ReviewAuthSession | null): void;
+    show(): void;
+    hide(): void;
+    toggleVisibility(): boolean;
+    isVisible(): boolean;
 }
 export declare function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): ZenithAdminOverlayHandle;
 export interface ReviewHudOptions {
@@ -294,6 +330,7 @@ export interface ReviewHudHandle {
     mount(): void;
     unmount(): void;
     reveal(): void;
+    hide(): void;
     startReview(): Promise<void>;
     stopAndSubmit(): Promise<ReviewSubmitResult | null>;
     cancelReview(): Promise<void>;

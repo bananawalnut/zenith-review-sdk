@@ -1,3 +1,104 @@
+function getZenithAdminShortcutState() {
+    const target = globalThis;
+    if (!target.__zenithAdminShortcut) {
+        target.__zenithAdminShortcut = {
+            bound: false,
+            refCount: 0,
+            open: null,
+            eventName: 'zenith-admin:open',
+            ready: false,
+        };
+    }
+    return target.__zenithAdminShortcut;
+}
+function isTextInputLikeElement(target) {
+    if (!(target instanceof HTMLElement))
+        return false;
+    if (target.isContentEditable)
+        return true;
+    const editableTags = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+    if (editableTags.has(target.tagName))
+        return true;
+    return false;
+}
+function attachZenithAdminShortcutFallbackState(open, eventName) {
+    const state = getZenithAdminShortcutState();
+    state.open = open;
+    state.eventName = eventName;
+    state.refCount += 1;
+    const globalState = getZenithAdminShortcutState();
+    globalState.open = open;
+    globalState.ready = true;
+    globalState.eventName = eventName;
+}
+function detachZenithAdminShortcutFallbackState() {
+    const windowObject = globalThis;
+    const state = windowObject.__zenithAdminShortcut;
+    if (!state)
+        return;
+    state.refCount -= 1;
+    if (state.refCount <= 0) {
+        state.refCount = 0;
+        state.open = null;
+        state.bound = false;
+        state.ready = false;
+    }
+}
+function createZenithAdminShortcutKeyHandler(eventName) {
+    return event => {
+        if (event.key.toLowerCase() !== 'z' || !event.shiftKey || !(event.metaKey || event.ctrlKey))
+            return;
+        if (event.repeat)
+            return;
+        if (isTextInputLikeElement(event.target))
+            return;
+        const state = getZenithAdminShortcutState();
+        if (!state.open) {
+            window.dispatchEvent(new CustomEvent(eventName));
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        state.open();
+    };
+}
+export function initZenithAdminShortcut(options) {
+    const isBrowser = typeof window !== 'undefined';
+    const isEnabled = options.enabled ?? true;
+    if (!isBrowser || !isEnabled) {
+        return {
+            dispose() { },
+        };
+    }
+    const { open } = options;
+    const eventName = options.eventName ?? 'zenith-admin:open';
+    const state = getZenithAdminShortcutState();
+    if (!state.bound) {
+        const handler = createZenithAdminShortcutKeyHandler(eventName);
+        window.addEventListener('keydown', handler, true);
+        state.bound = true;
+        state.handler = handler;
+    }
+    attachZenithAdminShortcutFallbackState(open, eventName);
+    return {
+        dispose() {
+            const snapshot = getZenithAdminShortcutState();
+            detachZenithAdminShortcutFallbackState();
+            if (snapshot.refCount > 0)
+                return;
+            const handler = snapshot.handler;
+            if (handler) {
+                window.removeEventListener('keydown', handler, true);
+                snapshot.handler = undefined;
+                snapshot.bound = false;
+            }
+            snapshot.open = null;
+            snapshot.ready = false;
+        },
+    };
+}
 class DrawingCaptureState {
     context;
     mode = 'drawing';
@@ -127,6 +228,7 @@ class BrowserReviewRecorder {
     eventId = 0;
     strokeId = 0;
     lastPointerMoveAt = 0;
+    lastScrollLogAt = 0;
     events = [];
     strokes = [];
     cursor;
@@ -186,11 +288,11 @@ class BrowserReviewRecorder {
     async start() {
         if (this.recording)
             return;
-        this.recording = true;
         this.startedAt = new Date().toISOString();
         this.startTime = performance.now();
         this.eventId = 0;
         this.lastPointerMoveAt = 0;
+        this.lastScrollLogAt = 0;
         this.captureMode = this.options.captureMode;
         this.captureState = this.createCaptureState(this.captureMode);
         this.drawingEnabled = false;
@@ -216,42 +318,52 @@ class BrowserReviewRecorder {
             viewportWidth: this.targetWindow.innerWidth,
             viewportHeight: this.targetWindow.innerHeight,
         };
-        this.bindPassiveRecordingEvents();
-        this.bindNavigationCapture();
-        if (this.options.timeLimitMs > 0) {
-            this.timeLimitTimer = this.targetWindow.setTimeout(() => {
-                this.timeLimitReached = true;
-                this.log({ type: 'time-limit-reached', timeLimitMs: this.options.timeLimitMs });
-                void this.stop();
-            }, this.options.timeLimitMs);
-            this.disposers.push(() => {
-                if (this.timeLimitTimer !== undefined) {
-                    this.targetWindow.clearTimeout(this.timeLimitTimer);
-                    this.timeLimitTimer = undefined;
-                }
-            });
-        }
         try {
-            this.captureState.enter();
+            await this.startMediaCapture();
+            this.recording = true;
+            this.bindPassiveRecordingEvents();
+            this.bindNavigationCapture();
+            if (this.options.timeLimitMs > 0) {
+                this.timeLimitTimer = this.targetWindow.setTimeout(() => {
+                    this.timeLimitReached = true;
+                    this.log({ type: 'time-limit-reached', timeLimitMs: this.options.timeLimitMs });
+                    void this.stop();
+                }, this.options.timeLimitMs);
+                this.disposers.push(() => {
+                    if (this.timeLimitTimer !== undefined) {
+                        this.targetWindow.clearTimeout(this.timeLimitTimer);
+                        this.timeLimitTimer = undefined;
+                    }
+                });
+            }
+            try {
+                this.captureState.enter();
+            }
+            catch (error) {
+                this.log({
+                    type: 'recorder-warning',
+                    code: 'capture-state',
+                    message: error instanceof Error ? error.message : 'Capture state initialization failed.',
+                });
+            }
+            this.log({ type: 'recording-started' });
+            this.log({
+                type: 'session-start',
+                url: this.sessionContext.url,
+                title: this.sessionContext.title,
+                scrollX: this.sessionContext.scrollX,
+                scrollY: this.sessionContext.scrollY,
+                viewportWidth: this.sessionContext.viewportWidth,
+                viewportHeight: this.sessionContext.viewportHeight,
+            });
         }
         catch (error) {
-            this.log({
-                type: 'recorder-warning',
-                code: 'capture-state',
-                message: error instanceof Error ? error.message : 'Capture state initialization failed.',
-            });
+            this.recording = false;
+            this.disposers.forEach(dispose => dispose());
+            this.disposers = [];
+            await this.stopMediaCapture();
+            throw error;
         }
-        this.log({ type: 'recording-started' });
-        this.log({
-            type: 'session-start',
-            url: this.sessionContext.url,
-            title: this.sessionContext.title,
-            scrollX: this.sessionContext.scrollX,
-            scrollY: this.sessionContext.scrollY,
-            viewportWidth: this.sessionContext.viewportWidth,
-            viewportHeight: this.sessionContext.viewportHeight,
-        });
-        await this.startMediaCapture();
     }
     async stop() {
         if (!this.recording) {
@@ -497,6 +609,7 @@ class BrowserReviewRecorder {
             this.captureState.handlePointerUp(event);
         });
         addWindowListener('click', event => this.logPointerEvent('click', event));
+        addWindowListener('scroll', () => this.logScrollEvent());
         addWindowListener('keyup', event => this.captureState.handleKeyUp(event));
         addWindowListener('blur', () => {
             if (this.captureMode === 'drawing')
@@ -540,6 +653,21 @@ class BrowserReviewRecorder {
             pointerType: 'pointerType' in event ? event.pointerType : 'mouse',
             buttons: event.buttons,
             target: getEventTargetLabel(event.target),
+        });
+    }
+    logScrollEvent() {
+        const elapsed = performance.now() - this.startTime;
+        if (elapsed - this.lastScrollLogAt < 250)
+            return;
+        this.lastScrollLogAt = elapsed;
+        this.log({
+            type: 'scroll',
+            url: this.targetWindow.location.href,
+            title: this.document.title,
+            scrollX: Math.round(this.targetWindow.scrollX),
+            scrollY: Math.round(this.targetWindow.scrollY),
+            viewportWidth: this.targetWindow.innerWidth,
+            viewportHeight: this.targetWindow.innerHeight,
         });
     }
     captureSelection() {
@@ -893,36 +1021,62 @@ class BrowserReviewRecorder {
         });
     }
     async startMediaCapture() {
-        if (this.options.captureAudio) {
-            try {
-                this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            }
-            catch (error) {
-                this.log({
-                    type: 'audio-error',
-                    message: error instanceof Error ? error.message : 'Microphone capture failed.',
-                });
-            }
+        if (!this.options.captureAudio)
+            return;
+        if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error('Microphone capture is not available in this browser. Use a browser with microphone support and click Start review again.');
         }
-        if (this.options.captureAudio && this.stream) {
-            const audioTracks = this.stream.getAudioTracks();
-            if (audioTracks.length > 0) {
-                // Build an audio-only stream for MediaRecorder
-                const audioStream = new MediaStream(audioTracks);
-                this.audioMimeType = getRecorderMimeType();
-                this.mediaRecorder = new MediaRecorder(audioStream, this.audioMimeType ? { mimeType: this.audioMimeType } : undefined);
-                this.mediaRecorder.addEventListener('dataavailable', event => {
-                    if (event.data.size === 0)
-                        return;
-                    this.audioChunks.push(event.data);
-                    this.log({
-                        type: 'audio-chunk',
-                        mimeType: event.data.type || this.audioMimeType || 'audio/webm',
-                        size: event.data.size,
-                    });
-                });
-                this.mediaRecorder.start(1000);
-            }
+        if (typeof MediaRecorder === 'undefined') {
+            throw new Error('Microphone recording is not available in this browser. Use a browser with MediaRecorder support and click Start review again.');
+        }
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : 'Microphone capture failed.';
+            this.log({ type: 'audio-error', message });
+            throw new Error(`Microphone capture failed. Allow microphone access and click Start review again. ${message}`);
+        }
+        const audioTracks = this.stream.getAudioTracks();
+        if (audioTracks.length === 0) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = undefined;
+            throw new Error('Microphone capture failed because the browser returned no audio track. Check the microphone and click Start review again.');
+        }
+        try {
+            const audioStream = new MediaStream(audioTracks);
+            this.audioMimeType = getRecorderMimeType();
+            this.mediaRecorder = new MediaRecorder(audioStream, this.audioMimeType ? { mimeType: this.audioMimeType } : undefined);
+        }
+        catch (error) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = undefined;
+            const message = error instanceof Error ? error.message : 'Microphone recorder setup failed.';
+            this.log({ type: 'audio-error', message });
+            throw new Error(`Microphone recorder setup failed. Check the microphone and click Start review again. ${message}`);
+        }
+        this.mediaRecorder.addEventListener('dataavailable', event => {
+            if (event.data.size === 0)
+                return;
+            this.audioChunks.push(event.data);
+            this.log({
+                type: 'audio-chunk',
+                mimeType: event.data.type || this.audioMimeType || 'audio/webm',
+                size: event.data.size,
+            });
+        });
+        this.mediaRecorder.addEventListener('error', event => {
+            const message = event instanceof ErrorEvent
+                ? event.message
+                : 'Microphone recorder error.';
+            this.log({ type: 'audio-error', message });
+        });
+        this.mediaRecorder.start(1000);
+        if (this.mediaRecorder.state !== 'recording') {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = undefined;
+            this.mediaRecorder = undefined;
+            throw new Error('Microphone recorder did not start. Click Start review again.');
         }
     }
     async stopMediaCapture() {
@@ -1149,7 +1303,7 @@ export function openReviewAuthOverlay(options) {
         </div>
         <form>
           <label><span>Email optional</span><input name="email" type="email" autocomplete="email" placeholder="${emailPlaceholder}"></label>
-          <label><span>Access code</span><input name="accessCode" type="password" autocomplete="one-time-code" required placeholder="${accessCodePlaceholder}"></label>
+          <label><span>Reviewer token</span><input name="accessCode" type="password" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" required placeholder="${accessCodePlaceholder}"></label>
           <div class="zr-error" role="alert"></div>
           <div class="zr-actions"><button class="zr-cancel" type="button">${cancelLabel}</button><button class="zr-submit" type="submit">${submitLabel}</button></div>
         </form>
@@ -1202,7 +1356,8 @@ export function openReviewAuthOverlay(options) {
             }
             setPending(true);
             errorNode.dataset.visible = 'false';
-            void createReviewAuthSession({
+            const createSession = options.createSession ?? createReviewAuthSession;
+            void createSession({
                 hubUrl: options.hubUrl,
                 projectId: options.projectId,
                 deploymentId: options.deploymentId,
@@ -1338,7 +1493,7 @@ function createZenithAdminOverlayStyles() {
     :host { all: initial; color-scheme: dark; }
     *, *::before, *::after { box-sizing: border-box; }
     .za-root { position: fixed; right: 18px; top: 50%; z-index: var(--za-z-index); transform: translateY(-50%); isolation: isolate; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .za-root::before { content: ''; position: absolute; inset: -20px; z-index: -1; border-radius: 999px; background: radial-gradient(circle, rgba(3, 7, 18, 0.82) 0%, rgba(3, 7, 18, 0.44) 44%, transparent 72%); filter: blur(8px); pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .za-root::before { content: ''; position: absolute; inset: -34px; z-index: -1; border-radius: 999px; background: radial-gradient(circle, rgba(3, 7, 18, 0.24) 0%, rgba(3, 7, 18, 0.12) 34%, rgba(3, 7, 18, 0.04) 60%, transparent 82%); filter: blur(18px); opacity: 0.58; pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
     .za-button { position: relative; width: 40px; height: 40px; border: 1px solid transparent; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; }
     .za-button:hover, .za-button:focus-visible { border-color: transparent; background: transparent; outline: 2px solid #9BFBE3; outline-offset: 2px; }
     .za-mark { position: absolute; display: inline-flex; width: calc(32px * 0.7265625); height: 32px; align-items: center; justify-content: center; transition: opacity 150ms ease, filter 300ms ease, transform 300ms ease; }
@@ -1390,8 +1545,15 @@ export function renderZenithAdminOverlay(options) {
     const action = root.querySelector('.za-action');
     let session = options.manager.getSession();
     let open = false;
+    let visible = true;
+    function applyVisibility() {
+        host.style.display = visible ? '' : 'none';
+        if (!visible)
+            open = false;
+    }
     function render(nextSession = options.manager.getSession()) {
         session = nextSession;
+        applyVisibility();
         labelNode.textContent = session
             ? `${options.label ?? 'Authenticated'}${session.label ? ` · ${session.label}` : ''}`
             : 'Not authenticated';
@@ -1423,6 +1585,22 @@ export function renderZenithAdminOverlay(options) {
         update(nextSession) {
             render(nextSession === undefined ? options.manager.getSession() : nextSession);
         },
+        show() {
+            visible = true;
+            render(session);
+        },
+        hide() {
+            visible = false;
+            render(session);
+        },
+        toggleVisibility() {
+            visible = !visible;
+            render(session);
+            return visible;
+        },
+        isVisible() {
+            return visible;
+        },
     };
 }
 function createReviewHudStyles() {
@@ -1444,6 +1622,9 @@ function createReviewHudStyles() {
     .zrh-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 750 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; }
     .zrh-action:hover:not(:disabled) { background: rgba(155, 251, 227, 0.14); }
     .zrh-action:disabled { cursor: not-allowed; opacity: 0.52; }
+    .zrh-close { width: 28px; height: 28px; border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 999px; background: rgba(15, 23, 42, 0.72); color: #e2e8f0; cursor: pointer; font: 800 16px/1 ui-sans-serif, system-ui, sans-serif; }
+    .zrh-close:hover:not(:disabled) { border-color: rgba(155, 251, 227, 0.38); color: #fff; }
+    .zrh-close:disabled { cursor: not-allowed; opacity: 0.5; }
     .zrh-action--danger { border-color: rgba(248, 113, 113, 0.38); background: rgba(127, 29, 29, 0.24); }
     .zrh-error { display: none; color: #fecdd3; font-size: 12px; line-height: 1.4; }
     .zrh-error[data-visible="true"] { display: block; }
@@ -1486,6 +1667,7 @@ export function createReviewHud(options) {
     let submitButton = null;
     let cancelButton = null;
     let logoutButton = null;
+    let closeButton = null;
     let recorder = null;
     let status = 'idle';
     let startedAt = 0;
@@ -1514,15 +1696,17 @@ export function createReviewHud(options) {
             statusNode.dataset.state = status;
             statusNode.textContent = status === 'recording'
                 ? 'Recording'
-                : status === 'submitting'
-                    ? 'Submitting'
-                    : status === 'submitted'
-                        ? 'Submitted'
-                        : status === 'error'
-                            ? 'Needs attention'
-                            : session
-                                ? 'Ready'
-                                : 'Locked';
+                : status === 'starting'
+                    ? 'Requesting microphone'
+                    : status === 'submitting'
+                        ? 'Submitting'
+                        : status === 'submitted'
+                            ? 'Submitted'
+                            : status === 'error'
+                                ? 'Needs attention'
+                                : session
+                                    ? 'Ready'
+                                    : 'Locked';
         }
         if (sessionNode)
             sessionNode.innerHTML = `<strong>Session</strong> ${session?.label || 'Not authenticated'}`;
@@ -1531,13 +1715,15 @@ export function createReviewHud(options) {
         if (elapsedNode)
             elapsedNode.innerHTML = `<strong>Elapsed</strong> ${status === 'recording' ? formatReviewHudElapsed(performance.now() - startedAt) : '00:00'}`;
         if (startButton)
-            startButton.disabled = status === 'recording' || status === 'submitting';
+            startButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting';
         if (submitButton)
             submitButton.disabled = status !== 'recording';
         if (cancelButton)
             cancelButton.disabled = status !== 'recording';
         if (logoutButton)
-            logoutButton.disabled = status === 'recording' || status === 'submitting';
+            logoutButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting';
+        if (closeButton)
+            closeButton.disabled = status === 'starting' || status === 'submitting';
         root?.setAttribute('data-state', status);
     }
     function startElapsedTimer() {
@@ -1560,10 +1746,12 @@ export function createReviewHud(options) {
             if (recorder)
                 await recorder.stop().catch(() => undefined);
             recorder = createReviewRecorder({
-                captureAudio: options.captureAudio ?? false,
+                captureAudio: options.captureAudio ?? true,
                 captureMode: 'highlight',
                 overlayZIndex: (options.zIndex ?? 2147483000) - 1,
             });
+            status = 'starting';
+            render();
             await recorder.start();
             startedAt = performance.now();
             status = 'recording';
@@ -1571,6 +1759,8 @@ export function createReviewHud(options) {
             render();
         }
         catch (error) {
+            if (recorder)
+                await recorder.stop().catch(() => undefined);
             recorder = null;
             stopElapsedTimer();
             setError(error);
@@ -1631,11 +1821,12 @@ export function createReviewHud(options) {
         <div class="zrh-head">
           <div class="zrh-brand"><div class="zrh-eyebrow">${escapeReviewAuthHtml(options.brandLabel ?? 'Zenith Review')}</div><div class="zrh-title">Global review HUD</div></div>
           <div class="zrh-status"></div>
+          <button class="zrh-close" data-action="close" type="button" aria-label="Close Zenith review HUD">×</button>
         </div>
         <div class="zrh-body">
           <div class="zrh-meta"><div data-role="session"></div><div data-role="subject"></div><div data-role="elapsed"></div></div>
           <div class="zrh-actions">
-            <button class="zrh-action" data-action="start" type="button">Start recording</button>
+            <button class="zrh-action" data-action="start" type="button">Start review</button>
             <button class="zrh-action" data-action="submit" type="button">Stop & submit</button>
             <button class="zrh-action zrh-action--danger" data-action="cancel" type="button">Cancel</button>
             <button class="zrh-action" data-action="logout" type="button">Sign out</button>
@@ -1655,9 +1846,11 @@ export function createReviewHud(options) {
         submitButton = root.querySelector('[data-action="submit"]');
         cancelButton = root.querySelector('[data-action="cancel"]');
         logoutButton = root.querySelector('[data-action="logout"]');
+        closeButton = root.querySelector('[data-action="close"]');
         startButton.addEventListener('click', () => void startReview());
         submitButton.addEventListener('click', () => void stopAndSubmit());
         cancelButton.addEventListener('click', () => void cancelReview());
+        closeButton.addEventListener('click', () => unmount());
         logoutButton.addEventListener('click', () => {
             manager.logout();
             render();
@@ -1680,10 +1873,14 @@ export function createReviewHud(options) {
         mount();
         render();
     }
+    function hide() {
+        unmount();
+    }
     return {
         mount,
         unmount,
         reveal,
+        hide,
         startReview,
         stopAndSubmit,
         cancelReview,
@@ -1783,10 +1980,15 @@ export async function submitReview(result, options) {
     const assetIds = [];
     const uploadOptions = { hubUrl, projectId, deploymentId, authToken, signal };
     const eventsBlob = new Blob([JSON.stringify(result.events)], { type: 'application/json' });
-    assetIds.push(await uploadAsset(uploadOptions, eventsBlob, 'events', 'application/json'));
-    if (result.audio) {
-        assetIds.push(await uploadAsset(uploadOptions, result.audio.blob, 'audio', result.audio.mimeType));
+    const eventsAssetId = await uploadAsset(uploadOptions, eventsBlob, 'events', 'application/json');
+    assetIds.push(eventsAssetId);
+    if (!result.audio || result.audio.chunks <= 0 || result.audio.size <= 0) {
+        throw new Error('Review submission requires recorded microphone audio. Click Start review, allow microphone access, and try again.');
     }
+    const audioBlob = result.audio.blob;
+    const audioMimeType = result.audio.mimeType || audioBlob.type || 'audio/webm';
+    const audioAssetId = await uploadAsset(uploadOptions, audioBlob, 'audio', audioMimeType);
+    assetIds.push(audioAssetId);
     const body = {
         review_id: reviewId,
         subject_id: subjectId,
@@ -1796,9 +1998,16 @@ export async function submitReview(result, options) {
         stopped_at: result.stoppedAt,
         duration_ms: result.durationMs,
         asset_ids: assetIds,
+        events_asset_id: eventsAssetId,
+        audio_asset_id: audioAssetId,
         metadata: {
             stroke_count: result.strokes.length,
             event_count: result.events.length,
+            audio_present: true,
+            audio_fallback_used: false,
+            audio_mime_type: audioMimeType,
+            audio_size_bytes: audioBlob.size,
+            audio_chunks: result.audio.chunks,
         },
     };
     if (submittedBy)
