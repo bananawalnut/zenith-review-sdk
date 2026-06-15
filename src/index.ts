@@ -2309,8 +2309,8 @@ function createZenithAdminOverlayStyles(): string {
     *, *::before, *::after { box-sizing: border-box; }
     .za-root { position: fixed; right: 18px; top: 50%; z-index: var(--za-z-index); transform: translateY(-50%); isolation: isolate; display: grid; place-items: center; gap: 8px; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .za-root::before { content: ''; position: absolute; inset: -34px; z-index: -1; border-radius: 999px; background: radial-gradient(circle, rgba(3, 7, 18, 0.24) 0%, rgba(3, 7, 18, 0.12) 34%, rgba(3, 7, 18, 0.04) 60%, transparent 82%); filter: blur(18px); opacity: 0.58; pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-    .za-button { position: relative; width: 40px; height: 40px; border: 1px solid transparent; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; }
-    .za-button:hover, .za-button:focus-visible { border-color: transparent; background: transparent; outline: 2px solid #9BFBE3; outline-offset: 2px; }
+    .za-button { position: relative; width: 38px; height: 38px; border: 1px solid rgba(155, 251, 227, 0.38); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 2px; transition: border-color 150ms ease, background 150ms ease, color 150ms ease; }
+    .za-button:hover, .za-button:focus-visible { border-color: rgba(155, 251, 227, 0.64); background: transparent; outline: none; }
     .za-mark { position: absolute; display: inline-flex; width: calc(32px * 0.7265625); height: 32px; align-items: center; justify-content: center; transition: opacity 150ms ease, filter 300ms ease, transform 300ms ease; }
     .za-mark svg { display: block; width: 100%; height: 100%; overflow: visible; }
     .za-mark--rest path { fill: #9BFBE3; }
@@ -2329,9 +2329,9 @@ function createZenithAdminOverlayStyles(): string {
     .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.36); pointer-events: none; }
     .za-menu-items:empty::before { display: none; }
     .za-menu-item { position: relative; z-index: 1; width: 14px; height: 14px; border: 0; border-radius: 999px; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
-    .za-menu-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(155, 251, 227, 0.72); background: radial-gradient(circle at 35% 30%, #ffffff 0%, #9BFBE3 32%, #02B286 100%); box-shadow: 0 0 0 1px rgba(2, 178, 134, 0.24), 0 0 18px rgba(155, 251, 227, 0.42); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; }
+    .za-menu-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid #9BFBE3; background: #9BFBE3; box-shadow: none; transition: transform 150ms ease, border-color 150ms ease, background 150ms ease; }
     .za-menu-tooltip { position: absolute; right: calc(100% + 10px); top: 50%; transform: translate(4px, -50%); max-width: 180px; border: 1px solid rgba(155, 251, 227, 0.34); border-radius: 10px; background: rgba(3, 7, 18, 0.86); color: #f8fafc; box-shadow: 0 18px 54px rgba(0, 0, 0, 0.46); font: 800 11px/1.1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 9px; opacity: 0; pointer-events: none; white-space: nowrap; backdrop-filter: blur(18px) saturate(1.08); -webkit-backdrop-filter: blur(18px) saturate(1.08); transition: opacity 150ms ease, transform 150ms ease; }
-    .za-menu-item:hover:not(:disabled) .za-menu-dot, .za-menu-item:focus-visible .za-menu-dot { transform: scale(1.28); border-color: #9BFBE3; box-shadow: 0 0 0 3px rgba(155, 251, 227, 0.18), 0 0 24px rgba(155, 251, 227, 0.54); }
+    .za-menu-item:hover:not(:disabled) .za-menu-dot, .za-menu-item:focus-visible .za-menu-dot { transform: scale(1.16); border-color: #ffffff; background: #9BFBE3; box-shadow: none; }
     .za-menu-item:hover:not(:disabled) .za-menu-tooltip, .za-menu-item:focus-visible .za-menu-tooltip { opacity: 1; transform: translate(0, -50%); }
     .za-menu-item:focus-visible { outline: 2px solid #9BFBE3; outline-offset: 5px; }
     .za-menu-item:disabled { cursor: not-allowed; opacity: 0.52; }
@@ -2357,7 +2357,7 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
   root.style.setProperty('--za-z-index', String(options.zIndex ?? 2147483000))
   const gradientId = 'za-zenith-aqua-gradient'
   root.innerHTML = `
-    <button class="za-button" type="button" aria-label="Zenith admin" title="Zenith admin">
+    <button class="za-button" type="button" aria-label="Zenith admin">
       <span class="za-mark za-mark--rest" aria-hidden="true"><svg viewBox="0 0 186 256" role="img"><path d="${ZENITH_ADMIN_MARK_PATH}"></path></svg></span>
       <span class="za-mark za-mark--alive" aria-hidden="true"><svg viewBox="0 0 279 385" role="img"><path d="${ZENITH_ADMIN_MARK_GRADIENT_PATH}" fill="url(#${gradientId})"></path><defs><linearGradient id="${gradientId}" x1="139.5" y1="0" x2="139.5" y2="385" gradientUnits="userSpaceOnUse"><stop stop-color="#9BFBE3"></stop><stop offset="1" stop-color="#02B286"></stop></linearGradient></defs></svg></span>
       <span class="za-tooltip">Zenith admin</span>
@@ -2430,7 +2430,6 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
       const itemButton = document.createElement('button')
       itemButton.className = 'za-menu-item'
       itemButton.type = 'button'
-      itemButton.title = item.title ?? item.label
       itemButton.setAttribute('aria-label', item.ariaLabel)
 
       const dot = document.createElement('span')
