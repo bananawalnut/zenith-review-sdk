@@ -292,6 +292,68 @@ export interface ReviewAuthSessionManager {
 }
 export declare function createReviewAuthSessionManager(options: ReviewAuthSessionManagerOptions): ReviewAuthSessionManager;
 export declare const ZENITH_PRODUCTION_HUB_URL = "https://hub.zenith-research.ca";
+export declare const ZENITH_ADMIN_MENU_MAX_SLOT = 12;
+export type ZenithAdminMenuIcon = {
+    kind: 'text';
+    value: string;
+};
+export interface ZenithAllowedAdminOperation<T = unknown> {
+    kind: string;
+    permission?: string;
+    signal?: AbortSignal;
+    run?: (signal: AbortSignal) => Promise<T> | T;
+}
+export interface ZenithAdminMenuAuthSnapshot {
+    userId: string;
+    roles: string[];
+    permissions: string[];
+    expiresAt: string;
+}
+export interface ZenithSafeMenuEvent {
+    source: 'pointer' | 'keyboard';
+    altKey: boolean;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    timestamp: number;
+}
+export interface ZenithAdminMenuActionContext {
+    auth: Readonly<ZenithAdminMenuAuthSnapshot>;
+    actions: Readonly<{
+        closeMenu: () => void;
+        requestSignOut: () => Promise<void>;
+        runAllowedOperation: <T>(operation: ZenithAllowedAdminOperation<T>) => Promise<T>;
+    }>;
+    item: Readonly<{
+        providerId: string;
+        id: string;
+        slot: number;
+    }>;
+    signal: AbortSignal;
+    event: ZenithSafeMenuEvent;
+}
+export interface ZenithAdminMenuState {
+    auth: Readonly<ZenithAdminMenuAuthSnapshot>;
+    item: Readonly<{
+        providerId: string;
+        id: string;
+        slot: number;
+    }>;
+}
+export interface ZenithAdminMenuItem {
+    providerId: string;
+    slot: number;
+    id: string;
+    label: string;
+    icon?: ZenithAdminMenuIcon;
+    title?: string;
+    ariaLabel?: string;
+    permissions?: string[];
+    disabled?: boolean | ((ctx: ZenithAdminMenuState) => boolean);
+    hidden?: boolean | ((ctx: ZenithAdminMenuState) => boolean);
+    replace?: boolean;
+    onSelect: (ctx: ZenithAdminMenuActionContext) => void | Promise<void>;
+}
 export interface ZenithAdminOverlayOptions {
     manager: ReviewAuthSessionManager;
     label?: string;
@@ -299,6 +361,10 @@ export interface ZenithAdminOverlayOptions {
     onOpen?: (session: ReviewAuthSession) => void;
     onLoginRequest?: () => void | Promise<void>;
     container?: HTMLElement;
+    menuItems?: ZenithAdminMenuItem[];
+    authorizedMenuProviders?: string[];
+    getMenuPermissions?: (session: ReviewAuthSession) => readonly string[];
+    onMenuItemError?: (error: Error, item: Pick<ZenithAdminMenuItem, 'providerId' | 'id' | 'slot'>) => void;
 }
 export interface ZenithAdminOverlayHandle {
     destroy(): void;

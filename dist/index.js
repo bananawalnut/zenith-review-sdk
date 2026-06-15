@@ -1488,11 +1488,130 @@ export function createReviewAuthSessionManager(options) {
 const ZENITH_ADMIN_MARK_PATH = 'M109.356 0H65.3503L0 83.6345V128H65.3503L0 211.637V256H185.25V222.995H34.8395L109.356 128H185.25V94.9946H34.8395L109.356 0Z';
 const ZENITH_ADMIN_MARK_GRADIENT_PATH = 'M164.698 0H98.4224L0 125.778V192.501H98.4224L0 318.283V385H279V335.363H52.4707L164.698 192.501H279V142.863H52.4707L164.698 0Z';
 export const ZENITH_PRODUCTION_HUB_URL = 'https://hub.zenith-research.ca';
+export const ZENITH_ADMIN_MENU_MAX_SLOT = 12;
+const ZENITH_ADMIN_MENU_MAX_ITEMS_PER_PROVIDER = 12;
+const ZENITH_ADMIN_MENU_MAX_TOTAL_ITEMS = 24;
+const ZENITH_ADMIN_MENU_ID_PATTERN = /^[a-z0-9][a-z0-9:_-]{0,63}$/i;
+const ZENITH_ADMIN_MENU_PERMISSION_PATTERN = /^[a-z0-9][a-z0-9:.*_-]{0,95}$/i;
+function normalizeZenithAdminMenuText(value, maxLength, field) {
+    const normalized = value.normalize('NFKC').trim();
+    if (!normalized)
+        throw new Error(`Zenith admin menu ${field} is required`);
+    if (normalized.length > maxLength)
+        throw new Error(`Zenith admin menu ${field} is too long`);
+    return normalized;
+}
+function assertZenithAdminMenuIdentifier(value, field) {
+    const normalized = normalizeZenithAdminMenuText(value, 64, field);
+    if (!ZENITH_ADMIN_MENU_ID_PATTERN.test(normalized))
+        throw new Error(`Invalid Zenith admin menu ${field}`);
+    return normalized;
+}
+function normalizeZenithAdminMenuPermissions(permissions) {
+    if (!permissions || permissions.length === 0)
+        return [];
+    return permissions.map(permission => {
+        const normalized = normalizeZenithAdminMenuText(permission, 96, 'permission');
+        if (!ZENITH_ADMIN_MENU_PERMISSION_PATTERN.test(normalized))
+            throw new Error('Invalid Zenith admin menu permission');
+        return normalized;
+    });
+}
+function validateZenithAdminMenuItem(item, context) {
+    const providerId = assertZenithAdminMenuIdentifier(item.providerId, 'providerId');
+    if (context.allowedProviders.size > 0 && !context.allowedProviders.has(providerId)) {
+        throw new Error('Unauthorized Zenith admin menu provider');
+    }
+    const id = assertZenithAdminMenuIdentifier(item.id, 'id');
+    if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > ZENITH_ADMIN_MENU_MAX_SLOT) {
+        throw new Error('Invalid Zenith admin menu slot');
+    }
+    const providerCount = context.countByProvider.get(providerId) ?? 0;
+    if (providerCount >= ZENITH_ADMIN_MENU_MAX_ITEMS_PER_PROVIDER) {
+        throw new Error('Too many Zenith admin menu items for provider');
+    }
+    if (context.total >= ZENITH_ADMIN_MENU_MAX_TOTAL_ITEMS) {
+        throw new Error('Too many Zenith admin menu items');
+    }
+    const existing = context.existingBySlot.get(item.slot);
+    if (existing && (!item.replace || existing.providerId !== providerId)) {
+        throw new Error('Zenith admin menu replace is restricted to the same provider');
+    }
+    const permissions = normalizeZenithAdminMenuPermissions(item.permissions);
+    if (permissions.length === 0) {
+        throw new Error('Zenith admin menu item is missing required permissions');
+    }
+    if (item.icon && item.icon.kind !== 'text') {
+        // The v0 admin menu rejects arbitrary HTML, SVG strings, script URLs, and data URLs.
+        throw new Error('Unsupported Zenith admin menu icon');
+    }
+    if (item.icon?.value)
+        normalizeZenithAdminMenuText(item.icon.value, 8, 'icon');
+    return {
+        ...item,
+        providerId,
+        id,
+        slot: item.slot,
+        label: normalizeZenithAdminMenuText(item.label, 40, 'label'),
+        title: item.title ? normalizeZenithAdminMenuText(item.title, 80, 'title') : undefined,
+        ariaLabel: item.ariaLabel ? normalizeZenithAdminMenuText(item.ariaLabel, 80, 'ariaLabel') : normalizeZenithAdminMenuText(item.label, 40, 'label'),
+        permissions,
+    };
+}
+function validateZenithAdminMenuItems(items, allowedProviders) {
+    const existingBySlot = new Map();
+    const countByProvider = new Map();
+    const validated = [];
+    for (const item of items ?? []) {
+        const next = validateZenithAdminMenuItem(item, {
+            allowedProviders,
+            existingBySlot,
+            countByProvider,
+            total: validated.length,
+        });
+        const replaced = existingBySlot.get(next.slot);
+        if (replaced) {
+            const index = validated.findIndex(candidate => candidate.slot === next.slot);
+            if (index >= 0)
+                validated.splice(index, 1, next);
+        }
+        else {
+            validated.push(next);
+            countByProvider.set(next.providerId, (countByProvider.get(next.providerId) ?? 0) + 1);
+        }
+        existingBySlot.set(next.slot, next);
+    }
+    return validated;
+}
+function createZenithAdminMenuAuthSnapshot(session, permissions) {
+    return {
+        userId: session.sessionId,
+        roles: session.label ? [session.label] : [],
+        permissions: [...permissions],
+        expiresAt: session.expiresAt,
+    };
+}
+function createSafeZenithMenuEvent(event) {
+    return {
+        source: event instanceof KeyboardEvent ? 'keyboard' : 'pointer',
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        timestamp: event.timeStamp,
+    };
+}
+function hasZenithAdminMenuPermission(auth, permission) {
+    return auth.permissions.includes(permission) || auth.permissions.includes('admin:*') || auth.permissions.includes(`${permission.split(':')[0]}:*`);
+}
+function canRenderZenithAdminMenuItem(item, auth) {
+    return item.permissions.every(permission => hasZenithAdminMenuPermission(auth, permission));
+}
 function createZenithAdminOverlayStyles() {
     return `
     :host { all: initial; color-scheme: dark; }
     *, *::before, *::after { box-sizing: border-box; }
-    .za-root { position: fixed; right: 18px; top: 50%; z-index: var(--za-z-index); transform: translateY(-50%); isolation: isolate; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .za-root { position: fixed; right: 18px; top: 50%; z-index: var(--za-z-index); transform: translateY(-50%); isolation: isolate; display: grid; place-items: center; gap: 8px; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .za-root::before { content: ''; position: absolute; inset: -34px; z-index: -1; border-radius: 999px; background: radial-gradient(circle, rgba(3, 7, 18, 0.24) 0%, rgba(3, 7, 18, 0.12) 34%, rgba(3, 7, 18, 0.04) 60%, transparent 82%); filter: blur(18px); opacity: 0.58; pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
     .za-button { position: relative; width: 40px; height: 40px; border: 1px solid transparent; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; }
     .za-button:hover, .za-button:focus-visible { border-color: transparent; background: transparent; outline: 2px solid #9BFBE3; outline-offset: 2px; }
@@ -1510,6 +1629,14 @@ function createZenithAdminOverlayStyles() {
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
     .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
+    .za-menu-items { display: grid; gap: 9px; place-items: center; }
+    .za-menu-item { position: relative; width: 14px; height: 14px; border: 0; border-radius: 999px; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
+    .za-menu-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(155, 251, 227, 0.72); background: radial-gradient(circle at 35% 30%, #ffffff 0%, #9BFBE3 32%, #02B286 100%); box-shadow: 0 0 0 1px rgba(2, 178, 134, 0.24), 0 0 18px rgba(155, 251, 227, 0.42); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; }
+    .za-menu-tooltip { position: absolute; right: calc(100% + 10px); top: 50%; transform: translate(4px, -50%); max-width: 180px; border: 1px solid rgba(155, 251, 227, 0.34); border-radius: 10px; background: rgba(3, 7, 18, 0.86); color: #f8fafc; box-shadow: 0 18px 54px rgba(0, 0, 0, 0.46); font: 800 11px/1.1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 9px; opacity: 0; pointer-events: none; white-space: nowrap; backdrop-filter: blur(18px) saturate(1.08); -webkit-backdrop-filter: blur(18px) saturate(1.08); transition: opacity 150ms ease, transform 150ms ease; }
+    .za-menu-item:hover:not(:disabled) .za-menu-dot, .za-menu-item:focus-visible .za-menu-dot { transform: scale(1.28); border-color: #9BFBE3; box-shadow: 0 0 0 3px rgba(155, 251, 227, 0.18), 0 0 24px rgba(155, 251, 227, 0.54); }
+    .za-menu-item:hover:not(:disabled) .za-menu-tooltip, .za-menu-item:focus-visible .za-menu-tooltip { opacity: 1; transform: translate(0, -50%); }
+    .za-menu-item:focus-visible { outline: 2px solid #9BFBE3; outline-offset: 5px; }
+    .za-menu-item:disabled { cursor: not-allowed; opacity: 0.52; }
     @keyframes za-zenith-pulse { 0%, 100% { filter: drop-shadow(0 0 0 rgba(155, 251, 227, 0.48)); transform: scale(1); } 45% { filter: drop-shadow(0 0 16px rgba(155, 251, 227, 0.48)); transform: scale(1.08); } }
     @media (prefers-reduced-motion: reduce) { .za-button:hover .za-mark--alive, .za-button:focus-visible .za-mark--alive { animation: none; } }
   `;
@@ -1517,6 +1644,9 @@ function createZenithAdminOverlayStyles() {
 export function renderZenithAdminOverlay(options) {
     if (typeof document === 'undefined')
         throw new Error('Zenith admin overlay requires a browser document');
+    const allowedProviders = new Set(options.authorizedMenuProviders ?? options.menuItems?.map(item => item.providerId) ?? []);
+    const validatedMenuItems = validateZenithAdminMenuItems(options.menuItems, allowedProviders);
+    const activeMenuControllers = new Map();
     const host = document.createElement('div');
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
@@ -1538,27 +1668,156 @@ export function renderZenithAdminOverlay(options) {
       <button class="za-action" type="button"></button>
     </section>
   `;
+    const menuItemsAbove = document.createElement('div');
+    menuItemsAbove.className = 'za-menu-items za-menu-items--above';
+    const menuItemsRoot = document.createElement('div');
+    menuItemsRoot.className = 'za-menu-items za-menu-items--below';
+    const mainButton = root.querySelector('.za-button');
+    root.insertBefore(menuItemsAbove, mainButton);
+    mainButton.after(menuItemsRoot);
     shadow.append(root);
     (options.container ?? document.body).append(host);
     const labelNode = root.querySelector('.za-label');
     const button = root.querySelector('.za-button');
     const action = root.querySelector('.za-action');
     let session = options.manager.getSession();
+    let sessionGeneration = 0;
     let open = false;
     let visible = false;
+    function abortMenuActions() {
+        activeMenuControllers.forEach(controller => controller.abort());
+        activeMenuControllers.clear();
+    }
     function applyVisibility() {
         host.style.display = visible ? '' : 'none';
         if (!visible)
             open = false;
     }
+    function getCurrentAuthSnapshot(currentSession) {
+        const permissions = options.getMenuPermissions?.(currentSession) ?? [];
+        return createZenithAdminMenuAuthSnapshot(currentSession, permissions);
+    }
+    function renderMenuItems(currentSession) {
+        menuItemsAbove.replaceChildren();
+        menuItemsRoot.replaceChildren();
+        if (!currentSession || !isReviewAuthSessionFresh(currentSession)) {
+            abortMenuActions();
+            return;
+        }
+        const auth = getCurrentAuthSnapshot(currentSession);
+        const stateFor = (item) => ({
+            auth,
+            item: { providerId: item.providerId, id: item.id, slot: item.slot },
+        });
+        const visibleItems = validatedMenuItems.filter(item => {
+            if (!canRenderZenithAdminMenuItem(item, auth))
+                return false;
+            const state = stateFor(item);
+            const hidden = typeof item.hidden === 'function' ? item.hidden(state) : item.hidden;
+            return !hidden;
+        });
+        const above = visibleItems.filter(item => item.slot % 2 === 1).sort((a, b) => b.slot - a.slot);
+        const below = visibleItems.filter(item => item.slot % 2 === 0).sort((a, b) => a.slot - b.slot);
+        const renderItem = (item) => {
+            const itemKey = `${item.providerId}:${item.id}`;
+            const itemButton = document.createElement('button');
+            itemButton.className = 'za-menu-item';
+            itemButton.type = 'button';
+            itemButton.title = item.title ?? item.label;
+            itemButton.setAttribute('aria-label', item.ariaLabel);
+            const dot = document.createElement('span');
+            dot.className = 'za-menu-dot';
+            dot.setAttribute('aria-hidden', 'true');
+            if (item.icon?.kind === 'text')
+                dot.dataset.icon = item.icon.value;
+            const tooltip = document.createElement('span');
+            tooltip.className = 'za-menu-tooltip';
+            tooltip.textContent = item.label;
+            itemButton.append(dot, tooltip);
+            const state = stateFor(item);
+            const disabled = typeof item.disabled === 'function' ? item.disabled(state) : item.disabled;
+            itemButton.disabled = Boolean(disabled);
+            itemButton.addEventListener('click', event => {
+                if (itemButton.disabled)
+                    return;
+                const latestSession = options.manager.getSession();
+                if (!latestSession || !isReviewAuthSessionFresh(latestSession)) {
+                    abortMenuActions();
+                    render(latestSession);
+                    return;
+                }
+                const latestAuth = getCurrentAuthSnapshot(latestSession);
+                if (!canRenderZenithAdminMenuItem(item, latestAuth)) {
+                    render(latestSession);
+                    return;
+                }
+                activeMenuControllers.get(itemKey)?.abort();
+                const controller = new AbortController();
+                activeMenuControllers.set(itemKey, controller);
+                const generationAtStart = sessionGeneration;
+                itemButton.disabled = true;
+                const runAllowedOperation = async (operation) => {
+                    if (controller.signal.aborted)
+                        throw new Error('Zenith admin menu action was aborted');
+                    const operationSession = options.manager.getSession();
+                    if (!operationSession || !isReviewAuthSessionFresh(operationSession) || generationAtStart !== sessionGeneration) {
+                        throw new Error('Zenith admin session changed before operation completed');
+                    }
+                    if (operation.permission && !hasZenithAdminMenuPermission(latestAuth, operation.permission)) {
+                        throw new Error('Zenith admin menu operation is not authorized');
+                    }
+                    if (operation.signal?.aborted)
+                        throw new Error('Zenith admin menu operation was aborted');
+                    const result = await operation.run?.(controller.signal);
+                    if (controller.signal.aborted || generationAtStart !== sessionGeneration) {
+                        throw new Error('Zenith admin session changed before operation completed');
+                    }
+                    return result;
+                };
+                const context = {
+                    auth: latestAuth,
+                    actions: {
+                        closeMenu: () => {
+                            open = false;
+                            render(options.manager.getSession());
+                        },
+                        requestSignOut: async () => {
+                            options.manager.logout();
+                        },
+                        runAllowedOperation,
+                    },
+                    item: { providerId: item.providerId, id: item.id, slot: item.slot },
+                    signal: controller.signal,
+                    event: createSafeZenithMenuEvent(event),
+                };
+                Promise.resolve(item.onSelect(context)).catch(error => {
+                    const safeError = error instanceof Error ? error : new Error('Zenith admin menu action failed');
+                    options.onMenuItemError?.(safeError, item);
+                }).finally(() => {
+                    activeMenuControllers.delete(itemKey);
+                    if (generationAtStart === sessionGeneration && !controller.signal.aborted)
+                        itemButton.disabled = false;
+                });
+            });
+            return itemButton;
+        };
+        menuItemsAbove.append(...above.map(renderItem));
+        menuItemsRoot.append(...below.map(renderItem));
+    }
     function render(nextSession = options.manager.getSession()) {
-        session = nextSession;
+        const previousSessionId = session?.sessionId;
+        session = nextSession && isReviewAuthSessionFresh(nextSession) ? nextSession : null;
+        if (previousSessionId !== session?.sessionId) {
+            sessionGeneration += 1;
+            abortMenuActions();
+        }
         applyVisibility();
         labelNode.textContent = session
             ? `${options.label ?? 'Authenticated'}${session.label ? ` · ${session.label}` : ''}`
             : 'Not authenticated';
         action.textContent = session ? 'Open admin panel' : 'Log in';
         root.dataset.open = open ? 'true' : 'false';
+        renderMenuItems(session);
     }
     button.addEventListener('click', () => {
         open = !open;
@@ -1579,6 +1838,7 @@ export function renderZenithAdminOverlay(options) {
     render(session);
     return {
         destroy() {
+            abortMenuActions();
             unsubscribe();
             host.remove();
         },

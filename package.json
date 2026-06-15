@@ -1,6 +1,6 @@
 {
   "name": "@zenith/review-sdk",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "private": true,
   "type": "module",
   "description": "Minimal browser review recorder with opt-in transparent drawing overlay.",
