@@ -89,13 +89,13 @@ test('admin overlay renders host menu items only after auth and removes them on 
 })
 
 test('admin menu DOM renders Zenith UI dots with text tooltips and rejects dangerous icon or url inputs', () => {
-  assert.match(source, /\.za-button \{[^}]*width: 38px; height: 38px;[^}]*border-radius: 999px;[^}]*padding: 2px/)
-  assert.match(source, /\.za-button:hover, \.za-button:focus-visible \{[^}]*outline: none/)
+  assert.match(source, /\.za-button \{[^}]*width: 42px; height: 42px;[^}]*border: 1px solid transparent;[^}]*border-radius: 999px;[^}]*padding: 4px/)
+  assert.match(source, /\.za-button:hover, \.za-button:focus-visible \{[^}]*border-color: rgba\(155, 251, 227, 0\.56\);[^}]*outline: none/)
   assert.doesNotMatch(source, /aria-label="Zenith admin" title="Zenith admin"/)
-  assert.match(source, /\.za-menu-items \{ position: relative; display: grid; gap: 16px/)
-  assert.match(source, /\.za-menu-items::before \{[\s\S]*width: 1px/)
+  assert.match(source, /\.za-menu-items \{ position: relative; display: grid; gap: 32px/)
+  assert.match(source, /\.za-menu-items::before \{[\s\S]*width: 1px[\s\S]*rgba\(155, 251, 227, 0\.24\)/)
   assert.match(source, /\.za-menu-items:empty::before \{ display: none; \}/)
-  assert.match(source, /\.za-menu-dot \{[^}]*background: #9BFBE3; box-shadow: none/)
+  assert.match(source, /\.za-menu-dot \{[^}]*background: rgba\(209, 255, 244, 0\.82\); box-shadow: none/)
   assert.doesNotMatch(source, /radial-gradient\(circle at 35% 30%/)
   assert.match(source, /dot\.className = 'za-menu-dot'/)
   assert.match(source, /dot\.setAttribute\('aria-hidden', 'true'\)/)
