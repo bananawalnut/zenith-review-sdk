@@ -49,6 +49,11 @@ test('shortcut handler ignores form controls and routes to fallback event when c
   assert.match(source, /window\.dispatchEvent\(new CustomEvent\(eventName\)\)/)
 })
 
+test('stored review auth session validation tolerates status metadata omitted by Hub', () => {
+  assert.match(source, /status\.projectId \?\? session\.projectId \?\? options\.projectId/)
+  assert.match(source, /status\.deploymentId \?\? session\.deploymentId \?\? options\.deploymentId/)
+})
+
 test('admin menu callbacks receive redacted context without raw session client or DOM event', () => {
   assert.match(source, /export interface ZenithAdminMenuActionContext/)
   assert.match(source, /export interface ZenithAdminMenuAuthSnapshot \{[\s\S]*expiresAt: string[\s\S]*\}/)

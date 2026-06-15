@@ -1192,8 +1192,8 @@ async function validateStoredReviewAuthSession(options, session) {
     try {
         const status = await getReviewAuthSession({ hubUrl: options.hubUrl, authToken: session.token });
         if (status.authenticated
-            && status.projectId === options.projectId
-            && status.deploymentId === options.deploymentId) {
+            && (status.projectId ?? session.projectId ?? options.projectId) === options.projectId
+            && (status.deploymentId ?? session.deploymentId ?? options.deploymentId) === options.deploymentId) {
             return session;
         }
     }
