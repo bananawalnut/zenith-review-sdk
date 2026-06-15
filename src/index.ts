@@ -2138,6 +2138,13 @@ export interface ZenithAdminMenuItem {
   onSelect: (ctx: ZenithAdminMenuActionContext) => void | Promise<void>
 }
 
+export interface ZenithAdminHomeActionContext {
+  auth: Readonly<ZenithAdminMenuAuthSnapshot>
+  actions: Readonly<Pick<ZenithAdminMenuActionContext['actions'], 'closeMenu' | 'requestSignOut' | 'runAllowedOperation'>>
+  signal: AbortSignal
+  event: ZenithSafeMenuEvent
+}
+
 interface ValidatedZenithAdminMenuItem extends ZenithAdminMenuItem {
   providerId: string
   id: string
@@ -2284,8 +2291,10 @@ function canRenderZenithAdminMenuItem(item: ValidatedZenithAdminMenuItem, auth: 
 export interface ZenithAdminOverlayOptions {
   manager: ReviewAuthSessionManager
   label?: string
+  adminHomeLabel?: string
   zIndex?: number
   onOpen?: (session: ReviewAuthSession) => void
+  onAdminHomeSelect?: (ctx: ZenithAdminHomeActionContext) => void | Promise<void>
   onLoginRequest?: () => void | Promise<void>
   container?: HTMLElement
   menuItems?: ZenithAdminMenuItem[]
@@ -2325,6 +2334,10 @@ function createZenithAdminOverlayStyles(): string {
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
     .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
+    .za-home-action-root { display: grid; place-items: center; min-height: 0; }
+    .za-home-action { border: 1px solid rgba(155, 251, 227, 0.42); border-radius: 999px; background: rgba(155, 251, 227, 0.1); color: #f8fafc; cursor: pointer; font: 850 10px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.12em; padding: 7px 9px; text-transform: uppercase; white-space: nowrap; }
+    .za-home-action:hover, .za-home-action:focus-visible { background: rgba(155, 251, 227, 0.16); border-color: rgba(155, 251, 227, 0.68); outline: none; }
+    .za-home-action:disabled { cursor: not-allowed; opacity: 0.52; }
     .za-menu-items { position: relative; display: grid; gap: 32px; place-items: center; }
     .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.24); pointer-events: none; }
     .za-menu-items:empty::before { display: none; }
@@ -2370,11 +2383,13 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
   `
   const menuItemsAbove = document.createElement('div')
   menuItemsAbove.className = 'za-menu-items za-menu-items--above'
+  const homeActionRoot = document.createElement('div')
+  homeActionRoot.className = 'za-home-action-root'
   const menuItemsRoot = document.createElement('div')
   menuItemsRoot.className = 'za-menu-items za-menu-items--below'
   const mainButton = root.querySelector('.za-button') as HTMLButtonElement
   root.insertBefore(menuItemsAbove, mainButton)
-  mainButton.after(menuItemsRoot)
+  mainButton.after(homeActionRoot, menuItemsRoot)
   shadow.append(root)
   ;(options.container ?? document.body).append(host)
 
@@ -2403,14 +2418,80 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
 
   function renderMenuItems(currentSession: ReviewAuthSession | null) {
     menuItemsAbove.replaceChildren()
+    homeActionRoot.replaceChildren()
     menuItemsRoot.replaceChildren()
 
     if (!currentSession || !isReviewAuthSessionFresh(currentSession)) {
       abortMenuActions()
+      homeActionRoot.replaceChildren()
       return
     }
 
     const auth = getCurrentAuthSnapshot(currentSession)
+    if (options.onAdminHomeSelect) {
+      const homeActionButton = document.createElement('button')
+      homeActionButton.className = 'za-home-action'
+      homeActionButton.type = 'button'
+      homeActionButton.textContent = normalizeZenithAdminMenuText(options.adminHomeLabel ?? 'Admin', 40, 'adminHomeLabel')
+      homeActionButton.setAttribute('aria-label', homeActionButton.textContent)
+      homeActionButton.addEventListener('click', event => {
+        const latestSession = options.manager.getSession()
+        if (!latestSession || !isReviewAuthSessionFresh(latestSession)) {
+          abortMenuActions()
+          render(latestSession)
+          return
+        }
+        const latestAuth = getCurrentAuthSnapshot(latestSession)
+        const itemKey = 'sdk:admin-home'
+        activeMenuControllers.get(itemKey)?.abort()
+        const controller = new AbortController()
+        activeMenuControllers.set(itemKey, controller)
+        const generationAtStart = sessionGeneration
+        homeActionButton.disabled = true
+
+        const runAllowedOperation = async <T>(operation: ZenithAllowedAdminOperation<T>): Promise<T> => {
+          if (controller.signal.aborted) throw new Error('Zenith admin home action was aborted')
+          const operationSession = options.manager.getSession()
+          if (!operationSession || !isReviewAuthSessionFresh(operationSession) || generationAtStart !== sessionGeneration) {
+            throw new Error('Zenith admin session changed before operation completed')
+          }
+          if (operation.permission && !hasZenithAdminMenuPermission(latestAuth, operation.permission)) {
+            throw new Error('Zenith admin home operation is not authorized')
+          }
+          if (operation.signal?.aborted) throw new Error('Zenith admin home operation was aborted')
+          const result = await operation.run?.(controller.signal)
+          if (controller.signal.aborted || generationAtStart !== sessionGeneration) {
+            throw new Error('Zenith admin session changed before operation completed')
+          }
+          return result as T
+        }
+
+        const context: ZenithAdminHomeActionContext = {
+          auth: latestAuth,
+          actions: {
+            closeMenu: () => {
+              open = false
+              render(options.manager.getSession())
+            },
+            requestSignOut: async () => {
+              options.manager.logout()
+            },
+            runAllowedOperation,
+          },
+          signal: controller.signal,
+          event: createSafeZenithMenuEvent(event),
+        }
+
+        Promise.resolve(options.onAdminHomeSelect?.(context)).catch(error => {
+          const safeError = error instanceof Error ? error : new Error('Zenith admin home action failed')
+          options.onMenuItemError?.(safeError, { providerId: 'sdk', id: 'home', slot: 0 })
+        }).finally(() => {
+          activeMenuControllers.delete(itemKey)
+          if (generationAtStart === sessionGeneration && !controller.signal.aborted) homeActionButton.disabled = false
+        })
+      })
+      homeActionRoot.replaceChildren(homeActionButton)
+    }
     const stateFor = (item: ValidatedZenithAdminMenuItem): ZenithAdminMenuState => ({
       auth,
       item: { providerId: item.providerId, id: item.id, slot: item.slot },

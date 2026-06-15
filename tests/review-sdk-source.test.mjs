@@ -108,3 +108,16 @@ test('admin menu DOM renders Zenith UI dots with text tooltips and rejects dange
   assert.doesNotMatch(source, /menuItemsRoot\.innerHTML/)
   assert.doesNotMatch(source, /itemButton\.textContent = item\.label/)
 })
+
+test('admin overlay exposes an authenticated SDK-level home action without consuming provider menu slots', () => {
+  assert.match(source, /adminHomeLabel\?: string/)
+  assert.match(source, /onAdminHomeSelect\?: \(ctx: ZenithAdminHomeActionContext\) => void \| Promise<void>/)
+  assert.match(source, /export interface ZenithAdminHomeActionContext/)
+  assert.match(source, /const homeActionButton = document\.createElement\('button'\)/)
+  assert.match(source, /homeActionButton\.className = 'za-home-action'/)
+  assert.match(source, /homeActionButton\.textContent = normalizeZenithAdminMenuText\(options\.adminHomeLabel \?\? 'Admin', 40, 'adminHomeLabel'\)/)
+  assert.match(source, /homeActionRoot\.replaceChildren\(homeActionButton\)/)
+  assert.match(source, /if \(!currentSession \|\| !isReviewAuthSessionFresh\(currentSession\)\) \{[\s\S]*homeActionRoot\.replaceChildren\(\)/)
+  assert.match(source, /options\.onAdminHomeSelect\?\.\(context\)/)
+  assert.doesNotMatch(source, /slot: ['"]admin-home['"]|id: ['"]admin-home['"]/)
+})
