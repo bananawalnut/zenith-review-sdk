@@ -2325,8 +2325,10 @@ function createZenithAdminOverlayStyles(): string {
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
     .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
-    .za-menu-items { display: grid; gap: 9px; place-items: center; }
-    .za-menu-item { position: relative; width: 14px; height: 14px; border: 0; border-radius: 999px; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
+    .za-menu-items { position: relative; display: grid; gap: 16px; place-items: center; }
+    .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.36); pointer-events: none; }
+    .za-menu-items:empty::before { display: none; }
+    .za-menu-item { position: relative; z-index: 1; width: 14px; height: 14px; border: 0; border-radius: 999px; background: transparent; color: #f8fafc; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
     .za-menu-dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(155, 251, 227, 0.72); background: radial-gradient(circle at 35% 30%, #ffffff 0%, #9BFBE3 32%, #02B286 100%); box-shadow: 0 0 0 1px rgba(2, 178, 134, 0.24), 0 0 18px rgba(155, 251, 227, 0.42); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; }
     .za-menu-tooltip { position: absolute; right: calc(100% + 10px); top: 50%; transform: translate(4px, -50%); max-width: 180px; border: 1px solid rgba(155, 251, 227, 0.34); border-radius: 10px; background: rgba(3, 7, 18, 0.86); color: #f8fafc; box-shadow: 0 18px 54px rgba(0, 0, 0, 0.46); font: 800 11px/1.1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 9px; opacity: 0; pointer-events: none; white-space: nowrap; backdrop-filter: blur(18px) saturate(1.08); -webkit-backdrop-filter: blur(18px) saturate(1.08); transition: opacity 150ms ease, transform 150ms ease; }
     .za-menu-item:hover:not(:disabled) .za-menu-dot, .za-menu-item:focus-visible .za-menu-dot { transform: scale(1.28); border-color: #9BFBE3; box-shadow: 0 0 0 3px rgba(155, 251, 227, 0.18), 0 0 24px rgba(155, 251, 227, 0.54); }

@@ -89,6 +89,9 @@ test('admin overlay renders host menu items only after auth and removes them on 
 })
 
 test('admin menu DOM renders Zenith UI dots with text tooltips and rejects dangerous icon or url inputs', () => {
+  assert.match(source, /\.za-menu-items \{ position: relative; display: grid; gap: 16px/)
+  assert.match(source, /\.za-menu-items::before \{[\s\S]*width: 1px/)
+  assert.match(source, /\.za-menu-items:empty::before \{ display: none; \}/)
   assert.match(source, /dot\.className = 'za-menu-dot'/)
   assert.match(source, /dot\.setAttribute\('aria-hidden', 'true'\)/)
   assert.match(source, /tooltip\.className = 'za-menu-tooltip'/)
