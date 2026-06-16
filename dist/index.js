@@ -1627,8 +1627,10 @@ function createZenithAdminOverlayStyles() {
     .za-root[data-open="true"] .za-popover { display: grid; gap: 8px; }
     .za-eyebrow { color: #9BFBE3; font-size: 10px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
-    .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
+    .za-actions { display: flex; gap: 8px; align-items: stretch; }
+    .za-action { flex: 1 1 auto; border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; white-space: nowrap; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
+    .za-action[hidden] { display: none; }
     .za-menu-items { position: relative; display: grid; gap: 32px; place-items: center; }
     .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.24); pointer-events: none; }
     .za-menu-items:empty::before { display: none; }
@@ -1642,6 +1644,12 @@ function createZenithAdminOverlayStyles() {
     @keyframes za-zenith-pulse { 0%, 100% { filter: drop-shadow(0 0 0 rgba(155, 251, 227, 0.48)); transform: scale(1); } 45% { filter: drop-shadow(0 0 16px rgba(155, 251, 227, 0.48)); transform: scale(1.08); } }
     @media (prefers-reduced-motion: reduce) { .za-button:hover .za-mark--alive, .za-button:focus-visible .za-mark--alive { animation: none; } }
   `;
+}
+function getDefaultZenithAdminHomeUrl() {
+    return new URL('admin', document.baseURI || window.location.href).href;
+}
+function resolveZenithAdminHomeUrl(url) {
+    return typeof url === 'function' ? url() : url || getDefaultZenithAdminHomeUrl();
 }
 export function renderZenithAdminOverlay(options) {
     if (typeof document === 'undefined')
@@ -1667,7 +1675,10 @@ export function renderZenithAdminOverlay(options) {
     <section class="za-popover" aria-label="Zenith admin panel">
       <div class="za-eyebrow">Zenith admin</div>
       <div class="za-label"></div>
-      <button class="za-action" type="button"></button>
+      <div class="za-actions">
+        <button class="za-action" data-action="open" type="button"></button>
+        <button class="za-action" data-action="admin-home" type="button"></button>
+      </div>
     </section>
   `;
     const menuItemsAbove = document.createElement('div');
@@ -1681,7 +1692,8 @@ export function renderZenithAdminOverlay(options) {
     (options.container ?? document.body).append(host);
     const labelNode = root.querySelector('.za-label');
     const button = root.querySelector('.za-button');
-    const action = root.querySelector('.za-action');
+    const action = root.querySelector('[data-action="open"]');
+    const adminHomeAction = root.querySelector('[data-action="admin-home"]');
     let session = options.manager.getSession();
     let sessionGeneration = 0;
     let open = false;
@@ -1817,6 +1829,8 @@ export function renderZenithAdminOverlay(options) {
             ? `${options.label ?? 'Authenticated'}${session.label ? ` · ${session.label}` : ''}`
             : 'Not authenticated';
         action.textContent = session ? 'Open admin panel' : 'Log in';
+        adminHomeAction.textContent = options.adminHomeLabel ?? 'Admin home';
+        adminHomeAction.hidden = !session;
         root.dataset.open = open ? 'true' : 'false';
         renderMenuItems(session);
     }
@@ -1834,6 +1848,16 @@ export function renderZenithAdminOverlay(options) {
             return;
         }
         void options.manager.login();
+    });
+    adminHomeAction.addEventListener('click', () => {
+        if (!session)
+            return;
+        const url = resolveZenithAdminHomeUrl(options.adminHomeUrl);
+        if (options.onAdminHomeSelect) {
+            void options.onAdminHomeSelect(url);
+            return;
+        }
+        window.location.assign(url);
     });
     const unsubscribe = options.manager.subscribe(nextSession => render(nextSession));
     render(session);
@@ -1925,7 +1949,6 @@ export function createReviewHud(options) {
     let elapsedNode = null;
     let errorNode = null;
     let startButton = null;
-    let adminHomeButton = null;
     let submitButton = null;
     let cancelButton = null;
     let logoutButton = null;
@@ -1978,8 +2001,6 @@ export function createReviewHud(options) {
             elapsedNode.innerHTML = `<strong>Elapsed</strong> ${status === 'recording' ? formatReviewHudElapsed(performance.now() - startedAt) : '00:00'}`;
         if (startButton)
             startButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting';
-        if (adminHomeButton)
-            adminHomeButton.disabled = status === 'starting' || status === 'submitting';
         if (submitButton)
             submitButton.disabled = status !== 'recording';
         if (cancelButton)
@@ -2091,7 +2112,6 @@ export function createReviewHud(options) {
           <div class="zrh-meta"><div data-role="session"></div><div data-role="subject"></div><div data-role="elapsed"></div></div>
           <div class="zrh-actions">
             <button class="zrh-action" data-action="start" type="button">Start review</button>
-            ${options.onAdminHomeSelect ? `<button class="zrh-action" data-action="admin-home" type="button">${escapeReviewAuthHtml(options.adminHomeLabel ?? 'Admin')}</button>` : ''}
             <button class="zrh-action" data-action="submit" type="button">Stop & submit</button>
             <button class="zrh-action zrh-action--danger" data-action="cancel" type="button">Cancel</button>
             <button class="zrh-action" data-action="logout" type="button">Sign out</button>
@@ -2108,13 +2128,11 @@ export function createReviewHud(options) {
         elapsedNode = root.querySelector('[data-role="elapsed"]');
         errorNode = root.querySelector('.zrh-error');
         startButton = root.querySelector('[data-action="start"]');
-        adminHomeButton = root.querySelector('[data-action="admin-home"]');
         submitButton = root.querySelector('[data-action="submit"]');
         cancelButton = root.querySelector('[data-action="cancel"]');
         logoutButton = root.querySelector('[data-action="logout"]');
         closeButton = root.querySelector('[data-action="close"]');
         startButton.addEventListener('click', () => void startReview());
-        adminHomeButton?.addEventListener('click', () => void options.onAdminHomeSelect?.());
         submitButton.addEventListener('click', () => void stopAndSubmit());
         cancelButton.addEventListener('click', () => void cancelReview());
         closeButton.addEventListener('click', () => unmount());

@@ -2284,8 +2284,11 @@ function canRenderZenithAdminMenuItem(item: ValidatedZenithAdminMenuItem, auth: 
 export interface ZenithAdminOverlayOptions {
   manager: ReviewAuthSessionManager
   label?: string
+  adminHomeLabel?: string
+  adminHomeUrl?: string | (() => string)
   zIndex?: number
   onOpen?: (session: ReviewAuthSession) => void
+  onAdminHomeSelect?: (url: string) => void | Promise<void>
   onLoginRequest?: () => void | Promise<void>
   container?: HTMLElement
   menuItems?: ZenithAdminMenuItem[]
@@ -2323,8 +2326,10 @@ function createZenithAdminOverlayStyles(): string {
     .za-root[data-open="true"] .za-popover { display: grid; gap: 8px; }
     .za-eyebrow { color: #9BFBE3; font-size: 10px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
-    .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
+    .za-actions { display: flex; gap: 8px; align-items: stretch; }
+    .za-action { flex: 1 1 auto; border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; white-space: nowrap; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
+    .za-action[hidden] { display: none; }
     .za-menu-items { position: relative; display: grid; gap: 32px; place-items: center; }
     .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.24); pointer-events: none; }
     .za-menu-items:empty::before { display: none; }
@@ -2338,6 +2343,14 @@ function createZenithAdminOverlayStyles(): string {
     @keyframes za-zenith-pulse { 0%, 100% { filter: drop-shadow(0 0 0 rgba(155, 251, 227, 0.48)); transform: scale(1); } 45% { filter: drop-shadow(0 0 16px rgba(155, 251, 227, 0.48)); transform: scale(1.08); } }
     @media (prefers-reduced-motion: reduce) { .za-button:hover .za-mark--alive, .za-button:focus-visible .za-mark--alive { animation: none; } }
   `
+}
+
+function getDefaultZenithAdminHomeUrl(): string {
+  return new URL('admin', document.baseURI || window.location.href).href
+}
+
+function resolveZenithAdminHomeUrl(url: ZenithAdminOverlayOptions['adminHomeUrl']): string {
+  return typeof url === 'function' ? url() : url || getDefaultZenithAdminHomeUrl()
 }
 
 export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): ZenithAdminOverlayHandle {
@@ -2365,7 +2378,10 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
     <section class="za-popover" aria-label="Zenith admin panel">
       <div class="za-eyebrow">Zenith admin</div>
       <div class="za-label"></div>
-      <button class="za-action" type="button"></button>
+      <div class="za-actions">
+        <button class="za-action" data-action="open" type="button"></button>
+        <button class="za-action" data-action="admin-home" type="button"></button>
+      </div>
     </section>
   `
   const menuItemsAbove = document.createElement('div')
@@ -2380,7 +2396,8 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
 
   const labelNode = root.querySelector('.za-label') as HTMLDivElement
   const button = root.querySelector('.za-button') as HTMLButtonElement
-  const action = root.querySelector('.za-action') as HTMLButtonElement
+  const action = root.querySelector('[data-action="open"]') as HTMLButtonElement
+  const adminHomeAction = root.querySelector('[data-action="admin-home"]') as HTMLButtonElement
   let session = options.manager.getSession()
   let sessionGeneration = 0
   let open = false
@@ -2526,6 +2543,8 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
       ? `${options.label ?? 'Authenticated'}${session.label ? ` · ${session.label}` : ''}`
       : 'Not authenticated'
     action.textContent = session ? 'Open admin panel' : 'Log in'
+    adminHomeAction.textContent = options.adminHomeLabel ?? 'Admin home'
+    adminHomeAction.hidden = !session
     root.dataset.open = open ? 'true' : 'false'
     renderMenuItems(session)
   }
@@ -2544,6 +2563,15 @@ export function renderZenithAdminOverlay(options: ZenithAdminOverlayOptions): Ze
       return
     }
     void options.manager.login()
+  })
+  adminHomeAction.addEventListener('click', () => {
+    if (!session) return
+    const url = resolveZenithAdminHomeUrl(options.adminHomeUrl)
+    if (options.onAdminHomeSelect) {
+      void options.onAdminHomeSelect(url)
+      return
+    }
+    window.location.assign(url)
   })
 
   const unsubscribe = options.manager.subscribe(nextSession => render(nextSession))
@@ -2590,8 +2618,6 @@ export interface ReviewHudOptions {
   message?: string
   accessCodePlaceholder?: string
   captureAudio?: boolean
-  adminHomeLabel?: string
-  onAdminHomeSelect?: () => void | Promise<void>
   zIndex?: number
   onSubmitted?: (result: ReviewSubmitResult) => void
   onError?: (error: Error) => void
@@ -2674,7 +2700,6 @@ export function createReviewHud(options: ReviewHudOptions): ReviewHudHandle {
   let elapsedNode: HTMLDivElement | null = null
   let errorNode: HTMLDivElement | null = null
   let startButton: HTMLButtonElement | null = null
-  let adminHomeButton: HTMLButtonElement | null = null
   let submitButton: HTMLButtonElement | null = null
   let cancelButton: HTMLButtonElement | null = null
   let logoutButton: HTMLButtonElement | null = null
@@ -2725,7 +2750,6 @@ export function createReviewHud(options: ReviewHudOptions): ReviewHudHandle {
     if (subjectNode) subjectNode.innerHTML = `<strong>Subject</strong> ${subjectId()}`
     if (elapsedNode) elapsedNode.innerHTML = `<strong>Elapsed</strong> ${status === 'recording' ? formatReviewHudElapsed(performance.now() - startedAt) : '00:00'}`
     if (startButton) startButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting'
-    if (adminHomeButton) adminHomeButton.disabled = status === 'starting' || status === 'submitting'
     if (submitButton) submitButton.disabled = status !== 'recording'
     if (cancelButton) cancelButton.disabled = status !== 'recording'
     if (logoutButton) logoutButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting'
@@ -2829,7 +2853,6 @@ export function createReviewHud(options: ReviewHudOptions): ReviewHudHandle {
           <div class="zrh-meta"><div data-role="session"></div><div data-role="subject"></div><div data-role="elapsed"></div></div>
           <div class="zrh-actions">
             <button class="zrh-action" data-action="start" type="button">Start review</button>
-            ${options.onAdminHomeSelect ? `<button class="zrh-action" data-action="admin-home" type="button">${escapeReviewAuthHtml(options.adminHomeLabel ?? 'Admin')}</button>` : ''}
             <button class="zrh-action" data-action="submit" type="button">Stop & submit</button>
             <button class="zrh-action zrh-action--danger" data-action="cancel" type="button">Cancel</button>
             <button class="zrh-action" data-action="logout" type="button">Sign out</button>
@@ -2846,13 +2869,11 @@ export function createReviewHud(options: ReviewHudOptions): ReviewHudHandle {
     elapsedNode = root.querySelector('[data-role="elapsed"]') as HTMLDivElement
     errorNode = root.querySelector('.zrh-error') as HTMLDivElement
     startButton = root.querySelector('[data-action="start"]') as HTMLButtonElement
-    adminHomeButton = root.querySelector('[data-action="admin-home"]') as HTMLButtonElement | null
     submitButton = root.querySelector('[data-action="submit"]') as HTMLButtonElement
     cancelButton = root.querySelector('[data-action="cancel"]') as HTMLButtonElement
     logoutButton = root.querySelector('[data-action="logout"]') as HTMLButtonElement
     closeButton = root.querySelector('[data-action="close"]') as HTMLButtonElement
     startButton.addEventListener('click', () => void startReview())
-    adminHomeButton?.addEventListener('click', () => void options.onAdminHomeSelect?.())
     submitButton.addEventListener('click', () => void stopAndSubmit())
     cancelButton.addEventListener('click', () => void cancelReview())
     closeButton.addEventListener('click', () => unmount())

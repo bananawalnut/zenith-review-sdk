@@ -357,8 +357,11 @@ export interface ZenithAdminMenuItem {
 export interface ZenithAdminOverlayOptions {
     manager: ReviewAuthSessionManager;
     label?: string;
+    adminHomeLabel?: string;
+    adminHomeUrl?: string | (() => string);
     zIndex?: number;
     onOpen?: (session: ReviewAuthSession) => void;
+    onAdminHomeSelect?: (url: string) => void | Promise<void>;
     onLoginRequest?: () => void | Promise<void>;
     container?: HTMLElement;
     menuItems?: ZenithAdminMenuItem[];
@@ -388,8 +391,6 @@ export interface ReviewHudOptions {
     message?: string;
     accessCodePlaceholder?: string;
     captureAudio?: boolean;
-    adminHomeLabel?: string;
-    onAdminHomeSelect?: () => void | Promise<void>;
     zIndex?: number;
     onSubmitted?: (result: ReviewSubmitResult) => void;
     onError?: (error: Error) => void;
