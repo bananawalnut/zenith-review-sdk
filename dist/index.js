@@ -1613,7 +1613,7 @@ function createZenithAdminOverlayStyles() {
     *, *::before, *::after { box-sizing: border-box; }
     .za-root { position: fixed; right: 18px; top: 50%; z-index: var(--za-z-index); transform: translateY(-50%); isolation: isolate; display: grid; place-items: center; gap: 8px; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .za-root::before { content: ''; position: absolute; inset: -34px; z-index: -1; border-radius: 999px; background: radial-gradient(circle, rgba(3, 7, 18, 0.24) 0%, rgba(3, 7, 18, 0.12) 34%, rgba(3, 7, 18, 0.04) 60%, transparent 82%); filter: blur(18px); opacity: 0.58; pointer-events: none; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-    .za-button { position: relative; width: 42px; height: 42px; border: 1px solid transparent; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 4px; transition: border-color 150ms ease, background 150ms ease, color 150ms ease; }
+    .za-button { position: relative; width: 48px; height: 48px; border: 1px solid transparent; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #f8fafc; cursor: pointer; padding: 7px; transition: border-color 150ms ease, background 150ms ease, color 150ms ease; }
     .za-button:hover, .za-button:focus-visible { border-color: rgba(155, 251, 227, 0.56); background: transparent; outline: none; }
     .za-mark { position: absolute; display: inline-flex; width: calc(32px * 0.7265625); height: 32px; align-items: center; justify-content: center; transition: opacity 150ms ease, filter 300ms ease, transform 300ms ease; }
     .za-mark svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -1629,10 +1629,6 @@ function createZenithAdminOverlayStyles() {
     .za-label { color: #e2e8f0; font-size: 13px; line-height: 1.35; }
     .za-action { border: 1px solid rgba(155, 251, 227, 0.36); border-radius: 10px; background: rgba(155, 251, 227, 0.08); color: #f8fafc; cursor: pointer; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; padding: 9px 10px; text-align: left; }
     .za-action:hover { background: rgba(155, 251, 227, 0.14); }
-    .za-home-action-root { display: grid; place-items: center; min-height: 0; }
-    .za-home-action { border: 1px solid rgba(155, 251, 227, 0.42); border-radius: 999px; background: rgba(155, 251, 227, 0.1); color: #f8fafc; cursor: pointer; font: 850 10px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.12em; padding: 7px 9px; text-transform: uppercase; white-space: nowrap; }
-    .za-home-action:hover, .za-home-action:focus-visible { background: rgba(155, 251, 227, 0.16); border-color: rgba(155, 251, 227, 0.68); outline: none; }
-    .za-home-action:disabled { cursor: not-allowed; opacity: 0.52; }
     .za-menu-items { position: relative; display: grid; gap: 32px; place-items: center; }
     .za-menu-items::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 50%; width: 1px; transform: translateX(-50%); background: rgba(155, 251, 227, 0.24); pointer-events: none; }
     .za-menu-items:empty::before { display: none; }
@@ -1676,13 +1672,11 @@ export function renderZenithAdminOverlay(options) {
   `;
     const menuItemsAbove = document.createElement('div');
     menuItemsAbove.className = 'za-menu-items za-menu-items--above';
-    const homeActionRoot = document.createElement('div');
-    homeActionRoot.className = 'za-home-action-root';
     const menuItemsRoot = document.createElement('div');
     menuItemsRoot.className = 'za-menu-items za-menu-items--below';
     const mainButton = root.querySelector('.za-button');
     root.insertBefore(menuItemsAbove, mainButton);
-    mainButton.after(homeActionRoot, menuItemsRoot);
+    mainButton.after(menuItemsRoot);
     shadow.append(root);
     (options.container ?? document.body).append(host);
     const labelNode = root.querySelector('.za-label');
@@ -1707,78 +1701,12 @@ export function renderZenithAdminOverlay(options) {
     }
     function renderMenuItems(currentSession) {
         menuItemsAbove.replaceChildren();
-        homeActionRoot.replaceChildren();
         menuItemsRoot.replaceChildren();
         if (!currentSession || !isReviewAuthSessionFresh(currentSession)) {
             abortMenuActions();
-            homeActionRoot.replaceChildren();
             return;
         }
         const auth = getCurrentAuthSnapshot(currentSession);
-        if (options.onAdminHomeSelect) {
-            const homeActionButton = document.createElement('button');
-            homeActionButton.className = 'za-home-action';
-            homeActionButton.type = 'button';
-            homeActionButton.textContent = normalizeZenithAdminMenuText(options.adminHomeLabel ?? 'Admin', 40, 'adminHomeLabel');
-            homeActionButton.setAttribute('aria-label', homeActionButton.textContent);
-            homeActionButton.addEventListener('click', event => {
-                const latestSession = options.manager.getSession();
-                if (!latestSession || !isReviewAuthSessionFresh(latestSession)) {
-                    abortMenuActions();
-                    render(latestSession);
-                    return;
-                }
-                const latestAuth = getCurrentAuthSnapshot(latestSession);
-                const itemKey = 'sdk:admin-home';
-                activeMenuControllers.get(itemKey)?.abort();
-                const controller = new AbortController();
-                activeMenuControllers.set(itemKey, controller);
-                const generationAtStart = sessionGeneration;
-                homeActionButton.disabled = true;
-                const runAllowedOperation = async (operation) => {
-                    if (controller.signal.aborted)
-                        throw new Error('Zenith admin home action was aborted');
-                    const operationSession = options.manager.getSession();
-                    if (!operationSession || !isReviewAuthSessionFresh(operationSession) || generationAtStart !== sessionGeneration) {
-                        throw new Error('Zenith admin session changed before operation completed');
-                    }
-                    if (operation.permission && !hasZenithAdminMenuPermission(latestAuth, operation.permission)) {
-                        throw new Error('Zenith admin home operation is not authorized');
-                    }
-                    if (operation.signal?.aborted)
-                        throw new Error('Zenith admin home operation was aborted');
-                    const result = await operation.run?.(controller.signal);
-                    if (controller.signal.aborted || generationAtStart !== sessionGeneration) {
-                        throw new Error('Zenith admin session changed before operation completed');
-                    }
-                    return result;
-                };
-                const context = {
-                    auth: latestAuth,
-                    actions: {
-                        closeMenu: () => {
-                            open = false;
-                            render(options.manager.getSession());
-                        },
-                        requestSignOut: async () => {
-                            options.manager.logout();
-                        },
-                        runAllowedOperation,
-                    },
-                    signal: controller.signal,
-                    event: createSafeZenithMenuEvent(event),
-                };
-                Promise.resolve(options.onAdminHomeSelect?.(context)).catch(error => {
-                    const safeError = error instanceof Error ? error : new Error('Zenith admin home action failed');
-                    options.onMenuItemError?.(safeError, { providerId: 'sdk', id: 'home', slot: 0 });
-                }).finally(() => {
-                    activeMenuControllers.delete(itemKey);
-                    if (generationAtStart === sessionGeneration && !controller.signal.aborted)
-                        homeActionButton.disabled = false;
-                });
-            });
-            homeActionRoot.replaceChildren(homeActionButton);
-        }
         const stateFor = (item) => ({
             auth,
             item: { providerId: item.providerId, id: item.id, slot: item.slot },
@@ -1997,6 +1925,7 @@ export function createReviewHud(options) {
     let elapsedNode = null;
     let errorNode = null;
     let startButton = null;
+    let adminHomeButton = null;
     let submitButton = null;
     let cancelButton = null;
     let logoutButton = null;
@@ -2049,6 +1978,8 @@ export function createReviewHud(options) {
             elapsedNode.innerHTML = `<strong>Elapsed</strong> ${status === 'recording' ? formatReviewHudElapsed(performance.now() - startedAt) : '00:00'}`;
         if (startButton)
             startButton.disabled = status === 'starting' || status === 'recording' || status === 'submitting';
+        if (adminHomeButton)
+            adminHomeButton.disabled = status === 'starting' || status === 'submitting';
         if (submitButton)
             submitButton.disabled = status !== 'recording';
         if (cancelButton)
@@ -2160,6 +2091,7 @@ export function createReviewHud(options) {
           <div class="zrh-meta"><div data-role="session"></div><div data-role="subject"></div><div data-role="elapsed"></div></div>
           <div class="zrh-actions">
             <button class="zrh-action" data-action="start" type="button">Start review</button>
+            ${options.onAdminHomeSelect ? `<button class="zrh-action" data-action="admin-home" type="button">${escapeReviewAuthHtml(options.adminHomeLabel ?? 'Admin')}</button>` : ''}
             <button class="zrh-action" data-action="submit" type="button">Stop & submit</button>
             <button class="zrh-action zrh-action--danger" data-action="cancel" type="button">Cancel</button>
             <button class="zrh-action" data-action="logout" type="button">Sign out</button>
@@ -2176,11 +2108,13 @@ export function createReviewHud(options) {
         elapsedNode = root.querySelector('[data-role="elapsed"]');
         errorNode = root.querySelector('.zrh-error');
         startButton = root.querySelector('[data-action="start"]');
+        adminHomeButton = root.querySelector('[data-action="admin-home"]');
         submitButton = root.querySelector('[data-action="submit"]');
         cancelButton = root.querySelector('[data-action="cancel"]');
         logoutButton = root.querySelector('[data-action="logout"]');
         closeButton = root.querySelector('[data-action="close"]');
         startButton.addEventListener('click', () => void startReview());
+        adminHomeButton?.addEventListener('click', () => void options.onAdminHomeSelect?.());
         submitButton.addEventListener('click', () => void stopAndSubmit());
         cancelButton.addEventListener('click', () => void cancelReview());
         closeButton.addEventListener('click', () => unmount());

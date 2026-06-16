@@ -354,19 +354,11 @@ export interface ZenithAdminMenuItem {
     replace?: boolean;
     onSelect: (ctx: ZenithAdminMenuActionContext) => void | Promise<void>;
 }
-export interface ZenithAdminHomeActionContext {
-    auth: Readonly<ZenithAdminMenuAuthSnapshot>;
-    actions: Readonly<Pick<ZenithAdminMenuActionContext['actions'], 'closeMenu' | 'requestSignOut' | 'runAllowedOperation'>>;
-    signal: AbortSignal;
-    event: ZenithSafeMenuEvent;
-}
 export interface ZenithAdminOverlayOptions {
     manager: ReviewAuthSessionManager;
     label?: string;
-    adminHomeLabel?: string;
     zIndex?: number;
     onOpen?: (session: ReviewAuthSession) => void;
-    onAdminHomeSelect?: (ctx: ZenithAdminHomeActionContext) => void | Promise<void>;
     onLoginRequest?: () => void | Promise<void>;
     container?: HTMLElement;
     menuItems?: ZenithAdminMenuItem[];
@@ -396,6 +388,8 @@ export interface ReviewHudOptions {
     message?: string;
     accessCodePlaceholder?: string;
     captureAudio?: boolean;
+    adminHomeLabel?: string;
+    onAdminHomeSelect?: () => void | Promise<void>;
     zIndex?: number;
     onSubmitted?: (result: ReviewSubmitResult) => void;
     onError?: (error: Error) => void;

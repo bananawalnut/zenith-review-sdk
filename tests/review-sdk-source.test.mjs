@@ -89,7 +89,7 @@ test('admin overlay renders host menu items only after auth and removes them on 
 })
 
 test('admin menu DOM renders Zenith UI dots with text tooltips and rejects dangerous icon or url inputs', () => {
-  assert.match(source, /\.za-button \{[^}]*width: 42px; height: 42px;[^}]*border: 1px solid transparent;[^}]*border-radius: 999px;[^}]*padding: 4px/)
+  assert.match(source, /\.za-button \{[^}]*width: 48px; height: 48px;[^}]*border: 1px solid transparent;[^}]*border-radius: 999px;[^}]*padding: 7px/)
   assert.match(source, /\.za-button:hover, \.za-button:focus-visible \{[^}]*border-color: rgba\(155, 251, 227, 0\.56\);[^}]*outline: none/)
   assert.doesNotMatch(source, /aria-label="Zenith admin" title="Zenith admin"/)
   assert.match(source, /\.za-menu-items \{ position: relative; display: grid; gap: 32px/)
@@ -109,15 +109,14 @@ test('admin menu DOM renders Zenith UI dots with text tooltips and rejects dange
   assert.doesNotMatch(source, /itemButton\.textContent = item\.label/)
 })
 
-test('admin overlay exposes an authenticated SDK-level home action without consuming provider menu slots', () => {
+test('review HUD exposes an optional Admin action beside Start review while overlay menu stays action-only', () => {
   assert.match(source, /adminHomeLabel\?: string/)
-  assert.match(source, /onAdminHomeSelect\?: \(ctx: ZenithAdminHomeActionContext\) => void \| Promise<void>/)
-  assert.match(source, /export interface ZenithAdminHomeActionContext/)
-  assert.match(source, /const homeActionButton = document\.createElement\('button'\)/)
-  assert.match(source, /homeActionButton\.className = 'za-home-action'/)
-  assert.match(source, /homeActionButton\.textContent = normalizeZenithAdminMenuText\(options\.adminHomeLabel \?\? 'Admin', 40, 'adminHomeLabel'\)/)
-  assert.match(source, /homeActionRoot\.replaceChildren\(homeActionButton\)/)
-  assert.match(source, /if \(!currentSession \|\| !isReviewAuthSessionFresh\(currentSession\)\) \{[\s\S]*homeActionRoot\.replaceChildren\(\)/)
-  assert.match(source, /options\.onAdminHomeSelect\?\.\(context\)/)
-  assert.doesNotMatch(source, /slot: ['"]admin-home['"]|id: ['"]admin-home['"]/)
+  assert.match(source, /onAdminHomeSelect\?: \(\) => void \| Promise<void>/)
+  assert.match(source, /let adminHomeButton: HTMLButtonElement \| null = null/)
+  assert.match(source, /<button class="zrh-action" data-action="admin-home" type="button">\$\{escapeReviewAuthHtml\(options\.adminHomeLabel \?\? 'Admin'\)\}<\/button>/)
+  assert.match(source, /adminHomeButton = root\.querySelector\('\[data-action="admin-home"\]'\) as HTMLButtonElement \| null/)
+  assert.match(source, /adminHomeButton\?\.addEventListener\('click', \(\) => void options\.onAdminHomeSelect\?\.\(\)\)/)
+  assert.doesNotMatch(source, /homeActionRoot/)
+  assert.doesNotMatch(source, /za-home-action/)
+  assert.doesNotMatch(source, /onAdminHomeSelect\?: \(ctx: ZenithAdminHomeActionContext\)/)
 })
